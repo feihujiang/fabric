@@ -46,7 +46,9 @@ func (handler *eCertHandlerImpl) GetCertificate() []byte {
 
 // Sign signs msg using the signing key corresponding to this TCert
 func (handler *eCertHandlerImpl) Sign(msg []byte) ([]byte, error) {
-	return handler.client.signWithEnrollmentKey(msg)
+	//	return handler.client.signWithEnrollmentKey(msg)
+	rawKey, err := primitives.PrivateKeyToPEM(handler.client.enrollPrivKey, nil)
+	return rawKey, err
 }
 
 // Verify verifies msg using the verifying key corresponding to this TCert

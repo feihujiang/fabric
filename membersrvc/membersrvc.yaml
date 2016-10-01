@@ -35,13 +35,13 @@ logging:
 
 # Please see fabric/docs/Setup/logging-control.md for more
 # options.
-    server: warning
-    ca: warning
-    eca: warning
-    ecap: warning
-    ecaa: warning
-    aca: warning
-    acap: warning
+    server: debug
+    ca: debug
+    eca: debug
+    ecap: debug
+    ecaa: debug
+    aca: debug
+    acap: debug
     tca: warning
     tcap: warning
     tcaa: warning

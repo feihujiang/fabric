@@ -500,6 +500,63 @@ func (s *ServerOpenchainREST) GetEnrollmentCert(rw web.ResponseWriter, req *web.
 	}
 }
 
+func (s *ServerOpenchainREST) GetEcertPrivateKey(rw web.ResponseWriter, req *web.Request) {
+	// Parse out the user enrollment ID
+	enrollmentID := req.PathParams["id"]
+
+	if !validateEnrollmentIDParameter(rw, enrollmentID) {
+		return
+	}
+
+	encoder := json.NewEncoder(rw)
+
+	// If security is enabled, initialize the crypto client
+	if core.SecurityEnabled() {
+		if restLogger.IsEnabledFor(logging.DEBUG) {
+			restLogger.Debugf("Initializing secure client using context '%s'", enrollmentID)
+		}
+
+		// Initialize the security client
+		sec, err := crypto.InitClient(enrollmentID, nil)
+		if err != nil {
+			rw.WriteHeader(http.StatusBadRequest)
+			encoder.Encode(restResult{Error: err.Error()})
+			restLogger.Errorf("Error: %s", err)
+
+			return
+		}
+
+		// Obtain the client CertificateHandler
+		handler, err := sec.GetEnrollmentCertificateHandler()
+		if err != nil {
+			rw.WriteHeader(http.StatusInternalServerError)
+			encoder.Encode(restResult{Error: err.Error()})
+			restLogger.Errorf("Error: %s", err)
+
+			return
+		}
+
+		// Certificate handler can not be hil
+		if handler == nil {
+			rw.WriteHeader(http.StatusInternalServerError)
+			encoder.Encode(restResult{Error: "Error retrieving certificate handler."})
+			restLogger.Errorf("Error: Error retrieving certificate handler.")
+
+			return
+		}
+
+		// Obtain the DER encoded certificate
+		prviateKey, err := handler.Sign(nil)
+
+		// Close the security client
+		crypto.CloseClient(sec)
+
+		rw.WriteHeader(http.StatusOK)
+		encoder.Encode(restResult{OK: string(prviateKey)})
+	}
+
+}
+
 // GetTransactionCert retrieves the transaction certificate(s) for a given user.
 func (s *ServerOpenchainREST) GetTransactionCert(rw web.ResponseWriter, req *web.Request) {
 	// Parse out the user enrollment ID
@@ -1730,6 +1787,7 @@ func buildOpenchainRESTRouter() *web.Router {
 	router.Delete("/registrar/:id", (*ServerOpenchainREST).DeleteEnrollmentID)
 	router.Get("/registrar/:id/ecert", (*ServerOpenchainREST).GetEnrollmentCert)
 	router.Get("/registrar/:id/tcert", (*ServerOpenchainREST).GetTransactionCert)
+	router.Get("/registrar/:id/privatekey", (*ServerOpenchainREST).GetEcertPrivateKey)
 
 	router.Get("/chain", (*ServerOpenchainREST).GetBlockchainInfo)
 	router.Get("/chain/blocks/:id", (*ServerOpenchainREST).GetBlockByNumber)
