@@ -53,7 +53,9 @@ func PrivateKeyToPEM(privateKey interface{}, pwd []byte) ([]byte, error) {
 
 		return pem.EncodeToMemory(
 			&pem.Block{
+				// jfh
 				Type:  "ECDSA PRIVATE KEY",
+//				Type:  "EC PRIVATE KEY",
 				Bytes: raw,
 			},
 		), nil

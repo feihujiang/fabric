@@ -1,0 +1,14 @@
+{
+	"type": 2,
+    "deviceCert": {
+		"deviceType": 1,
+		"enrollmentID": "1991device",
+		"systemRole": 1,
+		"bcdrmClientCertAttrs": {
+			"deviceCertType": 1,
+			"securityLevel": 200,
+			"manualfacturer": "huawei",
+			"modelName": "flyingtiger"
+		}
+	}
+}

@@ -42,6 +42,20 @@ var (
 	// ECertSubjectRole is the ASN1 object identifier of the subject's role.
 	//
 	ECertSubjectRole = asn1.ObjectIdentifier{2, 1, 3, 4, 5, 6, 7}
+	//		ECertSignAttributes := asn1.ObjectIdentifier{2, 1, 3, 4, 5, 6, 8}
+	BcdrmCertTypeId = asn1.ObjectIdentifier{2, 1, 3, 4, 5, 6, 28}
+
+	BcdrmCertUserTypeId = asn1.ObjectIdentifier{2, 1, 3, 4, 5, 6, 39}
+	BcdrmCertUserEnrollId = asn1.ObjectIdentifier{2, 1, 3, 4, 5, 6, 40}
+	BcdrmCertUserSystemRoleId = asn1.ObjectIdentifier{2, 1, 3, 4, 5, 6, 41}
+	
+	BcdrmCertDeviceTypeId = asn1.ObjectIdentifier{2, 1, 3, 4, 5, 6, 49}
+	BcdrmCertDeviceEnrollId = asn1.ObjectIdentifier{2, 1, 3, 4, 5, 6, 50}
+	BcdrmCertDeviceSystemRoleId = asn1.ObjectIdentifier{2, 1, 3, 4, 5, 6, 51}
+	BcdrmCertDeviceCertTypeId = asn1.ObjectIdentifier{2, 1, 3, 4, 5, 6, 52}
+	BcdrmCertDeviceSecurityLevelId = asn1.ObjectIdentifier{2, 1, 3, 4, 5, 6, 53}
+	BcdrmCertDeviceManualfacturerId = asn1.ObjectIdentifier{2, 1, 3, 4, 5, 6, 54}
+	BcdrmCertDeviceModelNameId = asn1.ObjectIdentifier{2, 1, 3, 4, 5, 6, 55}
 )
 
 // ECA is the enrollment certificate authority.

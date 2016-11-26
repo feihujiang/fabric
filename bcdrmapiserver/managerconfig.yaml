@@ -1,0 +1,34 @@
+# CA server parameters
+#
+server:
+        # The address that the REST service will listen on for incoming requests.
+        # address: "0.0.0.0:9091"
+        address: "127.0.0.1:9091"
+ca:
+        address: "127.0.0.1:7054"
+logging:
+        managerserver: debug
+eca:
+        registrar:               
+                # The 'registrar' section is used to control access to registration of new users directly via the ECAA.RegisterUser GRPC call.
+                # (See the 'fabric/membersrvc/protos/ca.proto' file for the definition of ECAA.RegisterUser.)
+                # Note that this also controls who can register users via the client SDK.
+                #
+                # Only users with a 'registrar' section in membersrvc may be a registrar to register other users.  In particular,
+                # 1) the "roles" field specifies which member roles may be registered by this user, and
+                # 2) the "delegateRoles" field specifies which member roles may become the "roles" field of registered users.
+                # The valid role names are "client", "peer", "validator", and "auditor".
+                #
+                # Example1:
+                #    The 'admin' user below can register clients, peers, validators, or auditors; furthermore, the 'admin' user can register other
+                #    users who can then register clients only.
+                #
+                # Example2:
+                #    The 'WebAppAdmin' user below can register clients only, but none of the users registered by this user can register other users.
+                #
+                # admin: 1 '{"registrar":{"roles":["client","peer","validator","auditor"],"delegateRoles":["client"]}}'
+                # WebAppAdmin: 1 '{"registrar":{"roles":["client"]}}'
+
+                # EnrollmentId: the filepath of the registrar's private key (pem format)
+                enrollId: admin
+                privatekeypath: "/home/src/github.com/hyperledger/fabric/admin.sign.pem"		 

@@ -68,6 +68,7 @@ type CertificateSpec struct {
 	NotBefore    *time.Time
 	NotAfter     *time.Time
 	ext          *[]pkix.Extension
+	isCA         bool
 }
 
 // AffiliationGroup struct
@@ -213,6 +214,9 @@ type TableInitializer func(*sql.DB) error
 
 func initializeCommonTables(db *sql.DB) error {
 	if _, err := db.Exec("CREATE TABLE IF NOT EXISTS Certificates (row INTEGER PRIMARY KEY, id VARCHAR(64), timestamp INTEGER, usage INTEGER, cert BLOB, hash BLOB, kdfkey BLOB)"); err != nil {
+		return err
+	}
+	if _, err := db.Exec("CREATE TABLE IF NOT EXISTS BcdrmAttr (row INTEGER PRIMARY KEY, id VARCHAR(64), bcdrmAttr VARCHAR(256))"); err != nil {
 		return err
 	}
 	if _, err := db.Exec("CREATE TABLE IF NOT EXISTS Users (row INTEGER PRIMARY KEY, id VARCHAR(64), enrollmentId VARCHAR(100), role INTEGER, metadata VARCHAR(256), token BLOB, state INTEGER, key BLOB)"); err != nil {
@@ -415,6 +419,10 @@ func (ca *CA) newCertificateFromSpec(spec *CertificateSpec) ([]byte, error) {
 	parent := ca.cert
 	isCA := parent == nil
 
+	if spec.isCA {
+		isCA = spec.isCA
+	}
+
 	tmpl := x509.Certificate{
 		SerialNumber: spec.GetSerialNumber(),
 		Subject: pkix.Name{
@@ -437,7 +445,7 @@ func (ca *CA) newCertificateFromSpec(spec *CertificateSpec) ([]byte, error) {
 		tmpl.Extensions = *spec.GetExtensions()
 		tmpl.ExtraExtensions = *spec.GetExtensions()
 	}
-	if isCA {
+	if parent == nil {
 		parent = &tmpl
 	}
 
@@ -609,7 +617,7 @@ func (ca *CA) registerUser(id, affiliation string, role pb.Role, attrs []*pb.Att
 		return "", err
 	}
 
-	tok, err = ca.registerUserWithEnrollID(id, enrollID, role, memberMetadata, opt...)
+	tok, err = ca.registerUserWithEnrollID(id, enrollID, role, attrs, memberMetadata, opt...)
 	if err != nil {
 		return "", err
 	}
@@ -627,7 +635,8 @@ func (ca *CA) registerUser(id, affiliation string, role pb.Role, attrs []*pb.Att
 
 // registerUserWithEnrollID registers a new user and its enrollmentID, role and state
 //
-func (ca *CA) registerUserWithEnrollID(id string, enrollID string, role pb.Role, memberMetadata string, opt ...string) (string, error) {
+//func (ca *CA) registerUserWithEnrollID(id string, enrollID string, role pb.Role, memberMetadata string, opt ...string) (string, error) {
+func (ca *CA) registerUserWithEnrollID(id string, enrollID string, role pb.Role, attrs []*pb.Attribute, memberMetadata string, opt ...string) (string, error) {
 	mutex.Lock()
 	defer mutex.Unlock()
 
@@ -645,6 +654,21 @@ func (ca *CA) registerUserWithEnrollID(id string, enrollID string, role pb.Role,
 	err := ca.db.QueryRow("SELECT row FROM Users WHERE id=?", id).Scan(&row)
 	if err == nil {
 		return "", errors.New("User is already registered")
+	}
+
+	// INSERT BcdrmAttr INTO DB
+	bcdrmAttr := ""
+	for _, attr := range attrs {
+		caLogger.Info("Registering attr.Name: " + attr.Name + " attr.Value: " + attr.Value)
+		if strings.EqualFold(attr.Name, "bcdrmAttributes") {
+			caLogger.Info("attr.Name == bcdrmAttributes")
+			bcdrmAttr = attr.Value
+			break
+		}
+	}
+	_, err = ca.db.Exec("INSERT INTO BcdrmAttr (id, bcdrmAttr) VALUES (?, ?)", id, bcdrmAttr)
+	if err != nil {
+		caLogger.Error(err)
 	}
 
 	_, err = ca.db.Exec("INSERT INTO Users (id, enrollmentId, token, role, metadata, state) VALUES (?, ?, ?, ?, ?, ?)", id, enrollID, tok, role, memberMetadata, 0)
@@ -748,6 +772,18 @@ func (ca *CA) readRole(id string) int {
 	ca.db.QueryRow("SELECT role FROM Users WHERE id=?", id).Scan(&role)
 
 	return role
+}
+
+func (ca *CA) readBCDRMAttr(id string) string {
+	caLogger.Debug("Reading BCDRMAttr for " + id + ".")
+
+	mutex.RLock()
+	defer mutex.RUnlock()
+
+	var bcdrmAttr string
+	ca.db.QueryRow("SELECT bcdrmAttr FROM BcdrmAttr WHERE id=?", id).Scan(&bcdrmAttr)
+
+	return bcdrmAttr
 }
 
 func (ca *CA) readAffiliationGroups() ([]*AffiliationGroup, error) {

@@ -22,6 +22,7 @@ import (
 	"crypto/subtle"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"errors"
 	"io/ioutil"
 	"math/big"
@@ -29,12 +30,13 @@ import (
 	"time"
 
 	"github.com/hyperledger/fabric/core/crypto/primitives/ecies"
+	"github.com/op/go-logging"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/timestamp"
+	bcdrm "github.com/hyperledger/fabric/bcdrmapiserver/managerserver"
 	"github.com/hyperledger/fabric/core/crypto/primitives"
 	pb "github.com/hyperledger/fabric/membersrvc/protos"
-	"github.com/op/go-logging"
 	"github.com/spf13/viper"
 	"golang.org/x/net/context"
 )
@@ -127,6 +129,7 @@ func (ecap *ECAP) CreateCertificatePair(ctx context.Context, in *pb.ECertCreateR
 	}
 
 	fetchResult := pb.FetchAttrsResult{Status: pb.FetchAttrsResult_SUCCESS, Msg: ""}
+	isCA := false
 	switch {
 	case state == 0:
 		// initial request, create encryption challenge
@@ -188,7 +191,125 @@ func (ecap *ECAP) CreateCertificatePair(ctx context.Context, in *pb.ECertCreateR
 		// create new certificate pair
 		ts := time.Now().Add(-1 * time.Minute).UnixNano()
 
-		spec := NewDefaultCertificateSpecWithCommonName(id, enrollID, skey.(*ecdsa.PublicKey), x509.KeyUsageDigitalSignature, pkix.Extension{Id: ECertSubjectRole, Critical: true, Value: []byte(strconv.Itoa(ecap.eca.readRole(id)))})
+		// Generate an ObjectIdentifier for the extension holding the attribute
+		attributeExtensions := []pkix.Extension{
+			{
+				Id:       ECertSubjectRole,
+				Critical: true,
+				Value:    []byte(strconv.Itoa(ecap.eca.readRole(id))),
+			},
+			//			{
+			//				Id:    ECertSignAttributes,
+			//				Value: []byte(ecap.eca.readBCDRMAttr(id)),
+			//			},
+		}
+
+		certAttrsJson := ecap.eca.readBCDRMAttr(id)
+		ecapLogger.Info("bcdrm attribute json: " + certAttrsJson)
+		if len(certAttrsJson) != 0 {
+			//			ecapLogger.Info("bcdrm attribute json: %s", certAttrsJson)
+			certAttrs := bcdrm.BcdrmCertAttrs{}
+			if err := json.Unmarshal([]byte(certAttrsJson), &certAttrs); err != nil {
+				ecapLogger.Error("Error Unmarshal bcdrm attribute")
+			}
+
+			attrExtension := pkix.Extension{
+				Id: BcdrmCertTypeId,
+				//				Critical: true,
+				Value: []byte(strconv.Itoa(certAttrs.Type)),
+			}
+			attributeExtensions = append(attributeExtensions, attrExtension)
+
+			if certAttrs.Type == bcdrm.UserCertType {
+				attrExtension = pkix.Extension{
+					Id: BcdrmCertUserTypeId,
+					//					Critical: true,
+					Value: []byte(strconv.Itoa(certAttrs.User.UserType)),
+				}
+				attributeExtensions = append(attributeExtensions, attrExtension)
+				attrExtension = pkix.Extension{
+					Id: BcdrmCertUserEnrollId,
+					//					Critical: true,
+					Value: []byte(certAttrs.User.EnrollmentID),
+				}
+				attributeExtensions = append(attributeExtensions, attrExtension)
+				attrExtension = pkix.Extension{
+					Id: BcdrmCertUserSystemRoleId,
+					//					Critical: true,
+					Value: []byte(strconv.Itoa(certAttrs.User.SystemRole)),
+				}
+				attributeExtensions = append(attributeExtensions, attrExtension)
+
+			} else if certAttrs.Type == bcdrm.DeviceCertType {
+				attrExtension = pkix.Extension{
+					Id: BcdrmCertDeviceTypeId,
+					//					Critical: true,
+					Value: []byte(strconv.Itoa(certAttrs.Device.DeviceType)),
+				}
+				attributeExtensions = append(attributeExtensions, attrExtension)
+				attrExtension = pkix.Extension{
+					Id: BcdrmCertDeviceEnrollId,
+					//					Critical: true,
+					Value: []byte(certAttrs.Device.EnrollmentID),
+				}
+				attributeExtensions = append(attributeExtensions, attrExtension)
+				attrExtension = pkix.Extension{
+					Id: BcdrmCertDeviceSystemRoleId,
+					//					Critical: true,
+					Value: []byte(strconv.Itoa(certAttrs.Device.SystemRole)),
+				}
+				attributeExtensions = append(attributeExtensions, attrExtension)
+				attrExtension = pkix.Extension{
+					Id: BcdrmCertDeviceCertTypeId,
+					//					Critical: true,
+					Value: []byte(strconv.Itoa(certAttrs.Device.ClientAttrs.DeviceCertType)),
+				}
+				attributeExtensions = append(attributeExtensions, attrExtension)
+				// Model certificates
+				if certAttrs.Device.ClientAttrs.DeviceCertType == 1 {
+					isCA = true
+					attrExtension = pkix.Extension{
+						Id: BcdrmCertDeviceSecurityLevelId,
+						//					Critical: true,
+						Value: []byte(strconv.Itoa(certAttrs.Device.ClientAttrs.SecurityLevel)),
+					}
+					attributeExtensions = append(attributeExtensions, attrExtension)
+					attrExtension = pkix.Extension{
+						Id:    BcdrmCertDeviceManualfacturerId,
+						Value: []byte(certAttrs.Device.ClientAttrs.Manualfacturer),
+					}
+					attributeExtensions = append(attributeExtensions, attrExtension)
+					attrExtension = pkix.Extension{
+						Id:    BcdrmCertDeviceModelNameId,
+						Value: []byte(certAttrs.Device.ClientAttrs.ModelName),
+					}
+					attributeExtensions = append(attributeExtensions, attrExtension)
+				} else {
+					for _, extension := range ecap.eca.CA.cert.Extensions {
+						if extension.Id.Equal(BcdrmCertDeviceSecurityLevelId) || extension.Id.Equal(BcdrmCertDeviceManualfacturerId) || extension.Id.Equal(BcdrmCertDeviceModelNameId) {
+							// Device certificates
+							attrExtension = pkix.Extension{
+								Id: extension.Id,
+								//					Critical: true,
+								Value: extension.Value,
+							}
+							attributeExtensions = append(attributeExtensions, attrExtension)
+						}
+					}
+				}
+			} else {
+				ecapLogger.Error("Error bcdrm cert type")
+			}
+		}
+
+		keyUsage := x509.KeyUsageDigitalSignature
+		if isCA {
+			keyUsage = keyUsage | x509.KeyUsageCertSign
+		}
+
+		spec := NewDefaultCertificateSpecWithCommonName(id, enrollID, skey.(*ecdsa.PublicKey), keyUsage, attributeExtensions...)
+		//		spec := NewDefaultCertificateSpecWithCommonName(id, enrollID, skey.(*ecdsa.PublicKey), x509.KeyUsageDigitalSignature, pkix.Extension{Id: ECertSubjectRole, Critical: true, Value: []byte(strconv.Itoa(ecap.eca.readRole(id)))})
+		spec.isCA = isCA
 		sraw, err := ecap.eca.createCertificateFromSpec(spec, ts, nil, true)
 		if err != nil {
 			ecapLogger.Error(err)
